@@ -14,11 +14,11 @@ Depending on which function is used, you can access rows from the result that ar
 
 ## Terms
 
-- partition
+- _Partition_: in the context of window functions, the partition we are referring to is a partition into groups that the window function operates on - not [`ALTER TABLE ... PARTITION BY`](partition-by.html) or anything to do with network partitions in the distributed systems sense.
 
-- virtual table
+- _Virtual table_:
 
-- window frame
+- _Window frame_: 
 
 ## How window functions work
 
@@ -26,7 +26,7 @@ Depending on which function is used, you can access rows from the result that ar
 
 The examples in this section use the "users" and "rides" tables from the 'movr' database used in the [CockroachDB 2.0 demo][demo].  The table layouts are are shown below.
 
-The movr data set will be open sourced in the 2.1 release timeframe.
+We are planning to open source the movr data set in the 2.1 release timeframe.  When it's out we will update this page with a link to the repo.
 
 ~~~
 +-------+-------------------------------------------------------------+    +-------+--------------------------------------------------------------------------+
@@ -91,13 +91,17 @@ To see which customers have generated the most revenue and also have taken more 
 
 {% include copy-clipboard.html %}
 ~~~ sql
+SELECT * FROM (
   SELECT DISTINCT name,
-    COUNT(*)     OVER (PARTITION BY name) AS "number of rides",
-    SUM(revenue) OVER (PARTITION BY name) AS "revenue per rider"
+    COUNT(*)     OVER w AS "number of rides",
+    AVG(revenue) OVER w AS "average revenue per ride"
     FROM users JOIN rides ON users.ID = rides.rider_id
-    ORDER BY "revenue per rider" DESC,
-             "number of rides" ASC
-    LIMIT 10;
+    WINDOW w AS (PARTITION BY name)
+  )
+  WHERE "number of rides" >= 3
+  ORDER BY "number of rides",
+           "average revenue per ride" DESC
+  LIMIT 10;
 ~~~
 
 ~~~
@@ -160,10 +164,10 @@ SELECT * FROM (
     FROM users JOIN rides ON users.ID = rides.rider_id
     WINDOW w AS (PARTITION BY name)
   )
-WHERE "number of rides" >= 3
-ORDER BY "number of rides",
-         "average revenue per ride" DESC
-LIMIT 10;
+  WHERE "number of rides" >= 3
+  ORDER BY "number of rides",
+           "average revenue per ride" DESC
+  LIMIT 10;
 ~~~
 
 ~~~
@@ -182,6 +186,30 @@ LIMIT 10;
 | Maria Nelson        |               3 |         70.0469578465542 |
 +---------------------+-----------------+--------------------------+
 (10 rows)
+~~~
+
+We can reuse and edit the query from #XXX to find out the total number of riders and total revenue generated thus far by the app.
+
+{% include copy-clipboard.html %}
+~~~ sql
+
+SELECT
+  COUNT("name") AS "total # of riders",
+  SUM("total rider revenue") AS "total revenue" FROM (
+    SELECT name,
+           SUM(revenue) over (partition BY name) AS "total rider revenue"
+      FROM users JOIN rides ON users.id = rides.rider_id
+      ORDER BY "total rider revenue" DESC
+      LIMIT (SELECT count(distinct(rider_id)) FROM rides)
+);
+~~~
+
+~~~
++-------------------+-------------------+
+| total # of riders |   total revenue   |
++-------------------+-------------------+
+|              9511 | 630401.0617159915 |
++-------------------+-------------------+ 
 ~~~
 
 ## See Also
