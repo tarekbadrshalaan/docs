@@ -4,7 +4,7 @@ summary: A window function performs a calculation across a set of table rows tha
 toc: false
 ---
 
-Window functions are used to process several items from a query's result set at a time.  They take as input several rows and compute a single output value, just as [aggregate functions][agg] do. You can use the predefined aggregate functions or define your own.
+Window functions are used to process a number of items from a query's result set at a time.
 
 They are called "window" functions because they operate on a subset of the rows selected by a query as if they had a sliding "window" onto the data being processed.
 
@@ -21,6 +21,10 @@ Depending on which function is used, you can access rows from the result that ar
 - _Window frame_: 
 
 ## How window functions work
+
+Window functions operate on a virtual table that is a subset of an existing table.  work by splitting the result set of a query into a subset of rows, also known as a _partition_, that the window function can operate on.
+
+Unlike aggregate functions, which take N inputs and return 1 output, window functions can return a result for each row processed.  That said, most aggregate functions can also be used as window functions (as shown in many of the examples below).
 
 ## Examples
 
