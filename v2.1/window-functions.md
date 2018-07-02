@@ -4,27 +4,17 @@ summary: A window function performs a calculation across a set of table rows tha
 toc: false
 ---
 
-Window functions are used to process a number of items from a query's result set at a time.
-
-They are called "window" functions because they operate on a subset of the rows selected by a query as if they had a sliding "window" onto the data being processed.
-
-Depending on which function is used, you can access rows from the result that are ahead or behind of the current row (see: `lag()` and `lead()`)
+CockroachDB supports the application of a function over a subset of the rows selected by a query.  The subset of rows is known as the _window frame_.   These functions, known as _window functions_ are used to process the selected rows in the window frame.  The items that make up the window frame are known as _peer rows_.
 
 <div id="toc"></div>
 
-## Terms
-
-- _Partition_: in the context of window functions, the partition we are referring to is a partition into groups that the window function operates on - not [`ALTER TABLE ... PARTITION BY`](partition-by.html) or anything to do with network partitions in the distributed systems sense.
-
-- _Virtual table_:
-
-- _Window frame_: 
-
 ## How window functions work
 
-Window functions operate on a virtual table that is a subset of an existing table.  work by splitting the result set of a query into a subset of rows, also known as a _partition_, that the window function can operate on.
+An outer [selection query](selection-queries.html) creates a "virtual table" which `PARTITION BY ...` breaks into the subsets of rows (window frames) that are processed by the window function.
 
-Unlike aggregate functions, which take N inputs and return 1 output, window functions can return a result for each row processed.  That said, most aggregate functions can also be used as window functions (as shown in many of the examples below).
+Unlike aggregate functions, which take N inputs and return 1 output, window functions can take N inputs and return N outputs.  For example, they can return a result for each row processed.  That said, most aggregate functions can also be used as window functions (as shown in the examples below).
+
+<img src="{{ 'images/v2.1/window-functions.png' | relative_url }}" alt="Window functions diagram" style="border:1px solid #eee;max-width:100%" />
 
 ## Examples
 
@@ -33,33 +23,76 @@ The examples in this section use the "users" and "rides" tables from the 'movr' 
 We are planning to open source the movr data set in the 2.1 release timeframe.  When it's out we will update this page with a link to the repo.
 
 ~~~
-+-------+-------------------------------------------------------------+    +-------+--------------------------------------------------------------------------+
-| Table |                         CreateTable                         |    | Table |                               CreateTable                                |
-+-------+-------------------------------------------------------------+    +-------+--------------------------------------------------------------------------+
-| users | CREATE TABLE users (                                        |    | rides | CREATE TABLE rides (                                                     |
-|       |     id UUID NOT NULL,                                       |    |       |     id UUID NOT NULL,                                                    |
-|       |     city STRING NOT NULL,                                   |    |       |     city STRING NOT NULL,                                                |
-|       |     name STRING NULL,                                       |    |       |     vehicle_city STRING NULL,                                            |
-|       |     address STRING NULL,                                    |    |       |     rider_id UUID NULL,                                                  |
-|       |     credit_card STRING NULL,                                |    |       |     vehicle_id UUID NULL,                                                |
-|       |     CONSTRAINT "primary" PRIMARY KEY (city ASC, id ASC),    |    |       |     start_address STRING NULL,                                           |
-|       |     FAMILY "primary" (id, city, name, address, credit_card) |    |       |     end_address STRING NULL,                                             |
-|       | )                                                           |    |       |     start_time TIMESTAMP NULL,                                           |
-+-------+-------------------------------------------------------------+    |       |     end_time TIMESTAMP NULL,                                             |
-                                                                           |       |     revenue FLOAT NULL,                                                  |
-                                                                           |       |     CONSTRAINT "primary" PRIMARY KEY (city ASC, id ASC),                 |
-                                                                           |       |     CONSTRAINT fk_city_ref_users FOREIGN KEY (city, rider_id) REFERENCES |
-                                                                           |       | users (city, id),                                                        |
-                                                                           |       |     INDEX rides_auto_index_fk_city_ref_users (city ASC, rider_id ASC),   |
-                                                                           |       |     CONSTRAINT fk_vehicle_city_ref_vehicles FOREIGN KEY (vehicle_city,   |
-                                                                           |       | vehicle_id) REFERENCES vehicles (city, id),                              |
-                                                                           |       |     INDEX rides_auto_index_fk_vehicle_city_ref_vehicles (vehicle_city    |
-                                                                           |       | ASC, vehicle_id ASC),                                                    |
-                                                                           |       |     FAMILY "primary" (id, city, vehicle_city, rider_id, vehicle_id,      |
-                                                                           |       | start_address, end_address, start_time, end_time, revenue),              |
-                                                                           |       |     CONSTRAINT check_vehicle_city_city CHECK (vehicle_city = city)       |
-                                                                           |       | )                                                                        |
-                                                                           +-------+--------------------------------------------------------------------------+
++-------+-------------------------------------------------------------+
+| Table |                         CreateTable                         |
++-------+-------------------------------------------------------------+
+| users | CREATE TABLE users (                                        |
+|       |     id UUID NOT NULL,                                       |
+|       |     city STRING NOT NULL,                                   |
+|       |     name STRING NULL,                                       |
+|       |     address STRING NULL,                                    |
+|       |     credit_card STRING NULL,                                |
+|       |     CONSTRAINT "primary" PRIMARY KEY (city ASC, id ASC),    |
+|       |     FAMILY "primary" (id, city, name, address, credit_card) |
+|       | )                                                           |
++-------+-------------------------------------------------------------+
+
++-------+--------------------------------------------------------------------------+
+| Table |                               CreateTable                                |
++-------+--------------------------------------------------------------------------+
+| rides | CREATE TABLE rides (                                                     |
+|       |     id UUID NOT NULL,                                                    |
+|       |     city STRING NOT NULL,                                                |
+|       |     vehicle_city STRING NULL,                                            |
+|       |     rider_id UUID NULL,                                                  |
+|       |     vehicle_id UUID NULL,                                                |
+|       |     start_address STRING NULL,                                           |
+|       |     end_address STRING NULL,                                             |
+|       |     start_time TIMESTAMP NULL,                                           |
+|       |     end_time TIMESTAMP NULL,                                             |
+|       |     revenue FLOAT NULL,                                                  |
+|       |     CONSTRAINT "primary" PRIMARY KEY (city ASC, id ASC),                 |
+|       |     CONSTRAINT fk_city_ref_users FOREIGN KEY (city, rider_id) REFERENCES |
+|       | users (city, id),                                                        |
+|       |     INDEX rides_auto_index_fk_city_ref_users (city ASC, rider_id ASC),   |
+|       |     CONSTRAINT fk_vehicle_city_ref_vehicles FOREIGN KEY (vehicle_city,   |
+|       | vehicle_id) REFERENCES vehicles (city, id),                              |
+|       |     INDEX rides_auto_index_fk_vehicle_city_ref_vehicles (vehicle_city    |
+|       | ASC, vehicle_id ASC),                                                    |
+|       |     FAMILY "primary" (id, city, vehicle_city, rider_id, vehicle_id,      |
+|       | start_address, end_address, start_time, end_time, revenue),              |
+|       |     CONSTRAINT check_vehicle_city_city CHECK (vehicle_city = city)       |
+|       | )                                                                        |
++-------+--------------------------------------------------------------------------+
+~~~
+
+To see which customers have taken the most rides:
+
+{% include copy-clipboard.html %}
+~~~ sql
+> SELECT * FROM
+    (SELECT distinct(name) as "name",
+            COUNT(*) OVER (PARTITION BY name) AS "number of rides"
+     FROM users JOIN rides ON users.id = rides.rider_id)
+  ORDER BY "number of rides" DESC LIMIT 10;
+~~~
+
+~~~
++-------------------+-----------------+
+|       name        | number of rides |
++-------------------+-----------------+
+| Michael Smith     |              53 |
+| Michael Williams  |              37 |
+| John Smith        |              36 |
+| Jennifer Smith    |              32 |
+| Michael Brown     |              31 |
+| Michael Miller    |              30 |
+| Christopher Smith |              29 |
+| James Johnson     |              28 |
+| Jennifer Johnson  |              27 |
+| Amanda Smith      |              26 |
++-------------------+-----------------+
+(10 rows)
 ~~~
 
 To see which customers have generated the most revenue, run:
